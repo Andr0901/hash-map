@@ -3,7 +3,11 @@
 #include <utility>
 #include <stdexcept>
 
-// Hashtable with separate chaining
+// This class is an implemetation of a hash map with separate chaining. All
+// elements are stored in a list(to provide linear iteration); the table has
+// iterators to these elements, according to their hash. It dinamycally
+// resizes itself, doubling the capacity, whenever the number of elements
+// exceeds the current capacity
 template<class KeyType, class ValueType, class Hash = std::hash<KeyType>>
 class HashMap {
   public:
@@ -14,26 +18,6 @@ class HashMap {
     using const_iterator =
       typename std::list<std::pair<const KeyType, ValueType>>::const_iterator;
 
-  private:
-    std::vector<std::list<iterator>> table_;
-    std::list<std::pair<const KeyType, ValueType>> elements_;
-    size_t nElements_, table_size_;
-    Hash hasher_;
-
-    // Checks whether load factor equals 1. If so, multiplies table size by 2.
-    void expand() {
-        if (nElements_ != table_size_) {
-            return;
-        }
-        table_size_ *= EXPANSION_COEFFICIENT;
-        table_ = std::vector<std::list<iterator>>(table_size_);
-        for (auto i = elements_.begin(); i != elements_.end(); ++i) {
-            size_t h = hasher_(i->first) % table_size_;
-            table_[h].push_back(i);
-        }
-    }
-
-  public:
     // Costructor used by default.
     HashMap(Hash hasher = Hash()) :
         nElements_(0),
@@ -82,7 +66,7 @@ class HashMap {
         ++nElements_;
         elements_.push_back(a);
         table_[h].push_back(--elements_.end());
-        expand();
+        expand_if_necessary();
     }
 
     // Erases an element.
@@ -142,18 +126,20 @@ class HashMap {
 
     // Gives access to an element by key, if doesn't exist, creates it.
     ValueType& operator[](const KeyType& i) {
-        if (find(i) == end()) {
-            insert({i, ValueType()});
+        iterator iter = find(i);
+        if (iter == end()) {
+            return returning_insert({i, ValueType()})->second;
         }
-        return find(i)->second;
+        return iter->second;
     }
 
     // Gives access to an element by key, if doesn't exist, throws exception.
     const ValueType& at(const KeyType& i) const {
-        if (find(i) == end()) {
+        const_iterator iter = find(i);
+        if (iter == end()) {
             throw std::out_of_range("");
         }
-        return find(i)->second;
+        return iter->second;
     }
 
     // Fully clears a hashmap.
@@ -177,5 +163,48 @@ class HashMap {
         }
         hasher_ = other.hasher_;
         return *this;
+    }
+
+  private:
+    std::vector<std::list<iterator>> table_;
+    std::list<std::pair<const KeyType, ValueType>> elements_;
+    size_t nElements_;
+    size_t table_size_;
+    Hash hasher_;
+
+    // Checks whether the load factor equals 1.
+    bool need_to_expand() {
+        return nElements_ > table_size_;
+    }
+
+    // Multiplies the table size by 2 and rebuilds it.
+    void expand() {
+        table_size_ *= EXPANSION_COEFFICIENT;
+        table_ = std::vector<std::list<iterator>>(table_size_);
+        for (auto i = elements_.begin(); i != elements_.end(); ++i) {
+            size_t h = hasher_(i->first) % table_size_;
+            table_[h].push_back(i);
+        }
+    }
+
+    // Checks whether load factor equals 1. If so, multiplies table size by 2.
+    void expand_if_necessary() {
+        if (!need_to_expand()) {
+            return;
+        }
+        expand();
+    }
+
+    // Insert for operator[], that returns an iterator to an inserted element.
+    iterator returning_insert(const std::pair<const KeyType, ValueType>& a) {
+        size_t h = hasher_(a.first) % table_size_;
+        ++nElements_;
+        elements_.push_back(a);
+        table_[h].push_back(--elements_.end());
+        if (need_to_expand()) {
+            expand();
+            return find(a.first);
+        }
+        return table_[h].back();
     }
 };
