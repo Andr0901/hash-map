@@ -126,11 +126,20 @@ class HashMap {
 
     // Gives access to an element by key, if doesn't exist, creates it.
     ValueType& operator[](const KeyType& i) {
-        iterator iter = find(i);
-        if (iter == end()) {
-            return returning_insert({i, ValueType()})->second;
+        size_t h = hasher_(i) % table_size_;
+        for (auto& iter : table_[h]) {
+            if (iter->first == i) {
+                return iter->second;
+            }
         }
-        return iter->second;
+        ++nElements_;
+        elements_.push_back({i, ValueType()});
+        table_[h].push_back(--elements_.end());
+        if (need_to_expand()) {
+            expand();
+            return find(i)->second;
+        }
+        return table_[h].back()->second;
     }
 
     // Gives access to an element by key, if doesn't exist, throws exception.
@@ -144,12 +153,10 @@ class HashMap {
 
     // Fully clears a hashmap.
     void clear() {
-        while (!elements_.empty()) {
-            table_[hasher_(elements_.back().first) % table_size_].clear();
-            elements_.pop_back();
-        }
         nElements_ = 0;
         table_size_ = 1;
+        elements_.clear();
+        table_ = std::vector<std::list<iterator>>(table_size_);
     }
 
     // Copies a hashmap to another.
@@ -193,18 +200,5 @@ class HashMap {
             return;
         }
         expand();
-    }
-
-    // Insert for operator[], that returns an iterator to an inserted element.
-    iterator returning_insert(const std::pair<const KeyType, ValueType>& a) {
-        size_t h = hasher_(a.first) % table_size_;
-        ++nElements_;
-        elements_.push_back(a);
-        table_[h].push_back(--elements_.end());
-        if (need_to_expand()) {
-            expand();
-            return find(a.first);
-        }
-        return table_[h].back();
     }
 };
